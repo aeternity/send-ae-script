@@ -4,10 +4,10 @@ const {
     MemoryAccount,
     Node,
     WALLET_TYPE,
+    Tag,
+    unpackTx,
 } = require("@aeternity/aepp-sdk");
 const WebSocketClient = require("websocket").client;
-
-
 
 const SELECTED_NETWORK = process.argv[2];
 const SENDER_SEED_PHRASE = process.argv[3];
@@ -16,22 +16,16 @@ let SENDER_ADDRESS = null;
 
 const { mnemonicToSeed } = require("@aeternity/bip39");
 
-const networks = {
-    testnet: {
-        name: "testnet",
-        instance: new Node("https://testnet.aeternity.io"),
-    },
-    mainnet: {
-        name: "mainnet",
-        instance: new Node("https://mainnet.aeternity.io"),
-    },
-};
-
 const WS_URL = `wss://${SELECTED_NETWORK}.aeternity.io/mdw/websocket`;
 
 const aeSdk = new AeSdkWallet({
     compilerUrl: "https://compiler.aepps.com",
-    nodes: [networks[SELECTED_NETWORK]],
+    nodes: [
+        {
+            name: SELECTED_NETWORK,
+            instance: new Node(`https://${SELECTED_NETWORK}.aeternity.io`),
+        },
+    ],
     id: "node",
     type: WALLET_TYPE.extension,
     name: "Wallet Node",
@@ -94,15 +88,32 @@ async function sendCoins() {
     const balance = await checkAddressBalance(SENDER_ADDRESS);
     console.log("RECIPIENT_ADDRESS ::", RECIPIENT_ADDRESS);
     if (balance > 0) {
-        const fee = 0.05 * balance; // TODO check fee calculation
-        const amount = balance - fee;
-        const tx = await aeSdk.spend(amount, RECIPIENT_ADDRESS);
-        console.info("========================");
-        console.info("Transaction mined ::", tx);
-        console.info("========================");
+        const spendTx = await aeSdk.buildTx(Tag.SpendTx, {
+            senderId: SENDER_ADDRESS,
+            recipientId: RECIPIENT_ADDRESS,
+            amount: balance,
+        });
+
+        const {
+            tx: { fee },
+        } = unpackTx(spendTx, Tag.SpendTx);
+
+        const finalAmount = balance - fee;
+
+        if (finalAmount > 0) {
+            const tx = await aeSdk.spend(finalAmount, RECIPIENT_ADDRESS);
+            console.info("========================");
+            console.info("final sent amount ::", finalAmount);
+            console.info("Transaction mined ::", tx);
+            console.info("========================");
+        } else {
+            console.info("========================");
+            console.info("no enough balance ::", finalAmount);
+            console.info("========================");
+        }
     } else {
         console.info("========================");
-        console.info("no balance ::");
+        console.info("no balance ::", balance);
         console.info("========================");
     }
 
