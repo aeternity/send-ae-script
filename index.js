@@ -94,7 +94,7 @@ async function sendCoins() {
     const balance = await checkAddressBalance(SENDER_ADDRESS);
     console.log("RECIPIENT_ADDRESS ::", RECIPIENT_ADDRESS);
     if (balance > 0) {
-        const fee = 0.5 * balance; // TODO check fee calculation
+        const fee = 0.05 * balance; // TODO check fee calculation
         const amount = balance - fee;
         const tx = await aeSdk.spend(amount, RECIPIENT_ADDRESS);
         console.info("========================");
