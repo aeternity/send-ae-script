@@ -7,7 +7,7 @@ const {
 } = require("@aeternity/aepp-sdk");
 const WebSocketClient = require("websocket").client;
 
-const WS_URL = "wss://testnet.aeternity.io/mdw/websocket";
+
 
 const SELECTED_NETWORK = process.argv[2];
 const SENDER_SEED_PHRASE = process.argv[3];
@@ -26,6 +26,8 @@ const networks = {
         instance: new Node("https://mainnet.aeternity.io"),
     },
 };
+
+const WS_URL = `wss://${SELECTED_NETWORK}.aeternity.io/mdw/websocket`;
 
 const aeSdk = new AeSdkWallet({
     compilerUrl: "https://compiler.aepps.com",
