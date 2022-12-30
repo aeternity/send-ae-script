@@ -11,6 +11,8 @@
   "dependencies": {
     "@aeternity/aepp-sdk": "^12.1.3",
     "@aeternity/bip39": "^0.1.0",
+    "json-bigint": "^1.0.0",
+    "tslog": "^4.7.1",
     "websocket": "^1.0.34"
   }
 }
