@@ -122,9 +122,9 @@ async function sendCoins(aeSdk: sdk.AeSdk, sender: AccountPubKey, receiver: Acco
   }
   if (state.pending.transactions.length > 0) {
     logger.info("Pending transactions, waiting for them to finish");
-    console.log("pending", state.pending);
+    logger.info("pending", state.pending);
     const nonces = state.pending.transactions.map((t) => t.tx.nonce);
-    console.log("pending nonces", nonces);
+    logger.info("pending nonces", nonces);
     return;
   }
   logger.info("RECIPIENT_ADDRESS ::", RECIPIENT_ADDRESS);
