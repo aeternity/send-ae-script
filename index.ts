@@ -40,7 +40,7 @@ logger.attachTransport((logObj) => {
   if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, "0o777");
   }
-  const logFile = `${logsDir}/${startTime}.txt`;
+  const logFile = `${logsDir}/${startTime.slice(0, 10)}.txt`;
   fs.appendFileSync(
     logFile,
     JSONbigConfigured.stringify(logObj, null, 2) + "\n"
@@ -59,51 +59,54 @@ function accountFromMnemonic(mnemonic: string) {
   };
 }
 
-const aeSdk = new AeSdkWallet({
-  compilerUrl: "https://compiler.aepps.com",
-  nodes: [
-    {
-      name: SELECTED_NETWORK,
-      instance: new Node(`https://${SELECTED_NETWORK}.aeternity.io`),
+function makeSdk() {
+  const aeSdk = new AeSdkWallet({
+    compilerUrl: "https://compiler.aepps.com",
+    nodes: [
+      {
+        name: SELECTED_NETWORK,
+        instance: new Node(`https://${SELECTED_NETWORK}.aeternity.io`),
+      },
+    ],
+    id: "node",
+    type: WALLET_TYPE.extension,
+    name: "Wallet Node",
+    // Hook for sdk registration
+    onConnection(aeppId, params) {
+      logger.info("onConnection ::", aeppId, params);
     },
-  ],
-  id: "node",
-  type: WALLET_TYPE.extension,
-  name: "Wallet Node",
-  // Hook for sdk registration
-  onConnection(aeppId, params) {
-    logger.info("onConnection ::", aeppId, params);
-  },
-  onDisconnect(msg, client) {
-    logger.info("onDisconnect ::", msg, client);
-  },
-  onSubscription(aeppId) {
-    logger.info("onSubscription ::", aeppId);
-  },
-  async onSign(aeppId, params) {
-    logger.info("onSign ::", aeppId, params);
-    return params;
-  },
-  onAskAccounts(aeppId) {
-    logger.info("onAskAccounts ::", aeppId);
-  },
-  async onMessageSign(aeppId, params) {
-    logger.info("onMessageSign ::", aeppId, params);
-  },
-});
+    onDisconnect(msg, client) {
+      logger.info("onDisconnect ::", msg, client);
+    },
+    onSubscription(aeppId) {
+      logger.info("onSubscription ::", aeppId);
+    },
+    async onSign(aeppId, params) {
+      logger.info("onSign ::", aeppId, params);
+      return params;
+    },
+    onAskAccounts(aeppId) {
+      logger.info("onAskAccounts ::", aeppId);
+    },
+    async onMessageSign(aeppId, params) {
+      logger.info("onMessageSign ::", aeppId, params);
+    },
+  });
+  return aeSdk;
+}
 
-async function connectWallet(): Promise<`ak_${string}`> {
+async function connectWallet(aeSdk: sdk.AeSdk): Promise<`ak_${string}`> {
   const acc = accountFromMnemonic(SENDER_SEED_PHRASE);
   const account = new MemoryAccount({
     keypair: { publicKey: acc.addr, secretKey: acc.privKey },
   });
   await aeSdk.addAccount(account, { select: true });
   const senderAddr = await account.address();
-  logger.info("connected wallet ::", senderAddr);
+  // logger.info("connected wallet ::", senderAddr);
   return senderAddr;
 }
 
-async function checkAccState(address: AccountPubKey) {
+async function checkAccState(aeSdk: sdk.AeSdk, address: AccountPubKey) {
   const pending = await aeSdk.api.getPendingAccountTransactionsByPubkey(
     address
   );
@@ -111,8 +114,8 @@ async function checkAccState(address: AccountPubKey) {
   return { balance, pending };
 }
 
-async function sendCoins(sender: AccountPubKey, receiver: AccountPubKey) {
-  const state = await checkAccState(sender);
+async function sendCoins(aeSdk: sdk.AeSdk, sender: AccountPubKey, receiver: AccountPubKey) {
+  const state = await checkAccState(aeSdk, sender);
   const balance = BigInt(state.balance);
   if (balance === 0n) {
     return;
@@ -120,6 +123,8 @@ async function sendCoins(sender: AccountPubKey, receiver: AccountPubKey) {
   if (state.pending.transactions.length > 0) {
     logger.info("Pending transactions, waiting for them to finish");
     console.log("pending", state.pending);
+    const nonces = state.pending.transactions.map((t) => t.tx.nonce);
+    console.log("pending nonces", nonces);
     return;
   }
   logger.info("RECIPIENT_ADDRESS ::", RECIPIENT_ADDRESS);
@@ -145,9 +150,10 @@ async function sendCoins(sender: AccountPubKey, receiver: AccountPubKey) {
 }
 
 async function init() {
-  const senderAddr = await connectWallet();
   while (true) {
-    const res = await sendCoins(senderAddr, RECIPIENT_ADDRESS);
+    const sdk = makeSdk();
+    const senderAddr = await connectWallet(sdk);
+    const res = await sendCoins(sdk, senderAddr, RECIPIENT_ADDRESS);
   }
 }
 
