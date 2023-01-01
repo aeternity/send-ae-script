@@ -1,4 +1,4 @@
-import * as sdk from "@aeternity/aepp-sdk"
+import * as sdk from "@aeternity/aepp-sdk";
 const {
   AeSdkWallet,
   getHdWalletAccountFromSeed,
@@ -6,7 +6,8 @@ const {
   Node,
   WALLET_TYPE,
   Tag,
-  unpackTx, AeSdk
+  unpackTx,
+  AeSdk,
 } = sdk;
 // const WebSocketClient = require("websocket").client;
 import { client as WebSocketClient } from "websocket";
@@ -99,79 +100,55 @@ async function connectWallet(): Promise<`ak_${string}`> {
   await aeSdk.addAccount(account, { select: true });
   const senderAddr = await account.address();
   logger.info("connected wallet ::", senderAddr);
-  return senderAddr
+  return senderAddr;
 }
 
-async function checkAddressBalance(address: AccountPubKey) {
-  const pending = await aeSdk.api.getPendingAccountTransactionsByPubkey(address);
-  console.log("pending", pending);
+async function checkAccState(address: AccountPubKey) {
+  const pending = await aeSdk.api.getPendingAccountTransactionsByPubkey(
+    address
+  );
   const balance = await aeSdk.getBalance(address);
-  logger.info(`Balance of ${address}: ${balance} aettos`);
-  return balance;
+  return { balance, pending };
 }
 
 async function sendCoins(sender: AccountPubKey, receiver: AccountPubKey) {
-  const balance = BigInt(await checkAddressBalance(sender));
-  logger.info("RECIPIENT_ADDRESS ::", RECIPIENT_ADDRESS);
-  if (balance > 0) {
-    logger.info("sender", sender, "receiver", receiver, "amount", balance)
-    const spendTx = await aeSdk.buildTx(Tag.SpendTx, {
-      senderId: sender,
-      recipientId: receiver,
-      amount: balance.toString(),
-    });
-
-    const unpackedTx = unpackTx(spendTx, Tag.SpendTx);
-    const fee = Number(unpackedTx.tx.fee);
-
-    const finalAmount = Number(balance) - fee;
-
-    if (finalAmount > 0) {
-      const tx = await aeSdk.spend(finalAmount, RECIPIENT_ADDRESS);
-      logger.info("final sent amount ::", finalAmount);
-      logger.info("Transaction mined ::", tx);
-    } else {
-      logger.info("no enough balance ::", finalAmount);
-    }
-  } else {
-    logger.info("no balance ::", balance);
+  const state = await checkAccState(sender);
+  const balance = BigInt(state.balance);
+  if (balance === 0n) {
+    return;
   }
-
-  await checkAddressBalance(RECIPIENT_ADDRESS);
-}
-
-// listen for new block generation
-async function listenForNewBlocGeneration(senderAddr: AccountPubKey) {
-  const wsClient = new WebSocketClient();
-
-  wsClient.on("connectFailed", function (error) {
-    logger.info("Connect Error: " + error.toString());
+  if (state.pending.transactions.length > 0) {
+    logger.info("Pending transactions, waiting for them to finish");
+    console.log("pending", state.pending);
+    return;
+  }
+  logger.info("RECIPIENT_ADDRESS ::", RECIPIENT_ADDRESS);
+  logger.info("sender", sender, "receiver", receiver, "amount", balance);
+  const spendTx = await aeSdk.buildTx(Tag.SpendTx, {
+    senderId: sender,
+    recipientId: receiver,
+    amount: balance.toString(),
   });
 
-  wsClient.on("connect", function (connection) {
-    logger.info("WebSocket Client Connected");
-    connection.on("error", function (error) {
-      logger.info("Connection Error: " + error.toString());
-    });
-    connection.on("close", function () {
-      logger.info("echo-protocol Connection Closed");
-    });
-    connection.on("message", function (message) {
-      if (message.type === "utf8") {
-        logger.info("New KeyBlocks Send sendCoins() ::");
+  const unpackedTx = unpackTx(spendTx, Tag.SpendTx);
+  const fee = Number(unpackedTx.tx.fee);
+  const finalAmount = Number(balance) - fee;
 
-        sendCoins(senderAddr, RECIPIENT_ADDRESS);
-      }
-    });
-
-    connection.sendUTF('{"op":"Subscribe", "payload": "KeyBlocks"}');
-  });
-
-  wsClient.connect(WS_URL);
+  if (finalAmount > 0) {
+    const tx = await aeSdk.spend(finalAmount, RECIPIENT_ADDRESS);
+    logger.info("final sent amount ::", finalAmount);
+    logger.info("Transaction mined ::", tx);
+  } else {
+    logger.info("no enough balance ::", finalAmount);
+  }
+  logger.info("Success!");
 }
+
 async function init() {
   const senderAddr = await connectWallet();
-  await listenForNewBlocGeneration(senderAddr);
+  while (true) {
+    const res = await sendCoins(senderAddr, RECIPIENT_ADDRESS);
+  }
 }
 
 init();
