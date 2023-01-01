@@ -1,3 +1,4 @@
+import * as sdk from "@aeternity/aepp-sdk"
 const {
   AeSdkWallet,
   getHdWalletAccountFromSeed,
@@ -5,17 +6,23 @@ const {
   Node,
   WALLET_TYPE,
   Tag,
-  unpackTx,
-} = require("@aeternity/aepp-sdk");
-const WebSocketClient = require("websocket").client;
+  unpackTx, AeSdk
+} = sdk;
+// const WebSocketClient = require("websocket").client;
+import { client as WebSocketClient } from "websocket";
+import { z } from "zod";
+import { Logger } from "tslog";
+
+export const AccountPubKey = z.custom<`ak_${string}`>(
+  (v) => typeof v === "string" && v.startsWith("ak_")
+);
+export type AccountPubKey = z.infer<typeof AccountPubKey>;
 
 const SELECTED_NETWORK = process.argv[2];
 const SENDER_SEED_PHRASE = process.argv[3];
-const RECIPIENT_ADDRESS = process.argv[4];
-let SENDER_ADDRESS = null;
+const RECIPIENT_ADDRESS = AccountPubKey.parse(process.argv[4]);
 
-const { mnemonicToSeed } = require("@aeternity/bip39");
-const { Logger } = require("tslog");
+const bip39 = require("bip39");
 const fs = require("fs");
 const JSONbig = require("json-bigint");
 
@@ -30,7 +37,7 @@ const logger = new Logger();
 logger.attachTransport((logObj) => {
   const logsDir = "ae-sender-logs";
   if (!fs.existsSync(logsDir)) {
-    fs.mkdirSync(logsDir, 0777);
+    fs.mkdirSync(logsDir, "0o777");
   }
   const logFile = `${logsDir}/${startTime}.txt`;
   fs.appendFileSync(
@@ -40,6 +47,16 @@ logger.attachTransport((logObj) => {
 });
 
 const WS_URL = `wss://${SELECTED_NETWORK}.aeternity.io/mdw/websocket`;
+
+function accountFromMnemonic(mnemonic: string) {
+  const secret = bip39.mnemonicToSeedSync(mnemonic);
+  const acc = getHdWalletAccountFromSeed(secret, 0);
+  return {
+    mnemonic,
+    privKey: acc.secretKey,
+    addr: AccountPubKey.parse(acc.publicKey),
+  };
+}
 
 const aeSdk = new AeSdkWallet({
   compilerUrl: "https://compiler.aepps.com",
@@ -54,118 +71,96 @@ const aeSdk = new AeSdkWallet({
   name: "Wallet Node",
   // Hook for sdk registration
   onConnection(aeppId, params) {
-    logger.info("========================");
     logger.info("onConnection ::", aeppId, params);
-    logger.info("========================");
   },
   onDisconnect(msg, client) {
-    logger.info("========================");
     logger.info("onDisconnect ::", msg, client);
-    logger.info("========================");
   },
   onSubscription(aeppId) {
-    logger.info("========================");
     logger.info("onSubscription ::", aeppId);
-    logger.info("========================");
   },
-  onSign(aeppId, params) {
-    logger.info("========================");
+  async onSign(aeppId, params) {
     logger.info("onSign ::", aeppId, params);
-    logger.info("========================");
+    return params;
   },
   onAskAccounts(aeppId) {
-    logger.info("========================");
     logger.info("onAskAccounts ::", aeppId);
-    logger.info("========================");
   },
-  onMessageSign(aeppId, params) {
-    logger.info("========================");
+  async onMessageSign(aeppId, params) {
     logger.info("onMessageSign ::", aeppId, params);
-    logger.info("========================");
   },
 });
 
-async function connectWallet() {
-  const { publicKey, secretKey } = getHdWalletAccountFromSeed(
-    mnemonicToSeed(SENDER_SEED_PHRASE),
-    0
-  );
-
+async function connectWallet(): Promise<`ak_${string}`> {
+  const acc = accountFromMnemonic(SENDER_SEED_PHRASE);
   const account = new MemoryAccount({
-    keypair: { publicKey: publicKey, secretKey },
+    keypair: { publicKey: acc.addr, secretKey: acc.privKey },
   });
   await aeSdk.addAccount(account, { select: true });
-  SENDER_ADDRESS = await account.address();
-  logger.info("========================");
-  logger.info("connected wallet ::", SENDER_ADDRESS);
-  logger.info("========================");
+  const senderAddr = await account.address();
+  logger.info("connected wallet ::", senderAddr);
+  return senderAddr
 }
 
-async function checkAddressBalance(_address) {
-  const balance = await aeSdk.getBalance(_address);
-  logger.log(`Balance of ${_address}: ${balance} aettos`);
+async function checkAddressBalance(address: AccountPubKey) {
+  const pending = await aeSdk.api.getPendingAccountTransactionsByPubkey(address);
+  console.log("pending", pending);
+  const balance = await aeSdk.getBalance(address);
+  logger.info(`Balance of ${address}: ${balance} aettos`);
   return balance;
 }
 
-async function sendCoins() {
-  const balance = await checkAddressBalance(SENDER_ADDRESS);
-  logger.log("RECIPIENT_ADDRESS ::", RECIPIENT_ADDRESS);
+async function sendCoins(sender: AccountPubKey, receiver: AccountPubKey) {
+  const balance = BigInt(await checkAddressBalance(sender));
+  logger.info("RECIPIENT_ADDRESS ::", RECIPIENT_ADDRESS);
   if (balance > 0) {
+    logger.info("sender", sender, "receiver", receiver, "amount", balance)
     const spendTx = await aeSdk.buildTx(Tag.SpendTx, {
-      senderId: SENDER_ADDRESS,
-      recipientId: RECIPIENT_ADDRESS,
-      amount: balance,
+      senderId: sender,
+      recipientId: receiver,
+      amount: balance.toString(),
     });
 
-    const {
-      tx: { fee },
-    } = unpackTx(spendTx, Tag.SpendTx);
+    const unpackedTx = unpackTx(spendTx, Tag.SpendTx);
+    const fee = Number(unpackedTx.tx.fee);
 
-    const finalAmount = balance - fee;
+    const finalAmount = Number(balance) - fee;
 
     if (finalAmount > 0) {
       const tx = await aeSdk.spend(finalAmount, RECIPIENT_ADDRESS);
-      logger.info("========================");
       logger.info("final sent amount ::", finalAmount);
       logger.info("Transaction mined ::", tx);
-      logger.info("========================");
     } else {
-      logger.info("========================");
       logger.info("no enough balance ::", finalAmount);
-      logger.info("========================");
     }
   } else {
-    logger.info("========================");
     logger.info("no balance ::", balance);
-    logger.info("========================");
   }
 
   await checkAddressBalance(RECIPIENT_ADDRESS);
 }
 
 // listen for new block generation
-async function listenForNewBlocGeneration() {
+async function listenForNewBlocGeneration(senderAddr: AccountPubKey) {
   const wsClient = new WebSocketClient();
 
   wsClient.on("connectFailed", function (error) {
-    logger.log("Connect Error: " + error.toString());
+    logger.info("Connect Error: " + error.toString());
   });
 
   wsClient.on("connect", function (connection) {
-    logger.log("WebSocket Client Connected");
+    logger.info("WebSocket Client Connected");
     connection.on("error", function (error) {
-      logger.log("Connection Error: " + error.toString());
+      logger.info("Connection Error: " + error.toString());
     });
     connection.on("close", function () {
-      logger.log("echo-protocol Connection Closed");
+      logger.info("echo-protocol Connection Closed");
     });
     connection.on("message", function (message) {
       if (message.type === "utf8") {
-        logger.info("========================");
         logger.info("New KeyBlocks Send sendCoins() ::");
-        logger.info("========================");
 
-        sendCoins();
+        sendCoins(senderAddr, RECIPIENT_ADDRESS);
       }
     });
 
@@ -175,8 +170,8 @@ async function listenForNewBlocGeneration() {
   wsClient.connect(WS_URL);
 }
 async function init() {
-  await connectWallet();
-  await listenForNewBlocGeneration();
+  const senderAddr = await connectWallet();
+  await listenForNewBlocGeneration(senderAddr);
 }
 
 init();

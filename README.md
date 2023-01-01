@@ -8,8 +8,8 @@ Installation
 Run
 for testnet
 
-``node index.js testnet "seed phrase" "recipient_address"``
+``npx ts-node index.js testnet "seed phrase" "recipient_address"``
 
 for mainnet
 
-``node index.js mainnet "seed phrase" "recipient_address"``
+``npx ts-node index.js mainnet "seed phrase" "recipient_address"``
