@@ -38,7 +38,7 @@ const logger = new Logger();
 logger.attachTransport((logObj) => {
   const logsDir = "ae-sender-logs";
   if (!fs.existsSync(logsDir)) {
-    fs.mkdirSync(logsDir, "0o777");
+    fs.mkdirSync(logsDir, "0777");
   }
   const logFile = `${logsDir}/${startTime.slice(0, 10)}.txt`;
   fs.appendFileSync(
@@ -136,11 +136,11 @@ async function sendCoins(aeSdk: sdk.AeSdk, sender: AccountPubKey, receiver: Acco
   });
 
   const unpackedTx = unpackTx(spendTx, Tag.SpendTx);
-  const fee = Number(unpackedTx.tx.fee);
-  const finalAmount = Number(balance) - fee;
+  const fee = BigInt(unpackedTx.tx.fee.toString());
+  const finalAmount = balance - fee;
 
   if (finalAmount > 0) {
-    const tx = await aeSdk.spend(finalAmount, RECIPIENT_ADDRESS);
+    const tx = await aeSdk.spend(finalAmount.toString(), RECIPIENT_ADDRESS);
     logger.info("final sent amount ::", finalAmount);
     logger.info("Transaction mined ::", tx);
   } else {
