@@ -8,8 +8,8 @@ Installation
 Run
 for testnet
 
-``npx forever -v -c ts-node index.ts testnet "seed phrase" "recipient_address"``
+``npx forever -v -c ts-node ./index.ts testnet "seed phrase" "recipient_address"``
 
 for mainnet
 
-``npx forever -v -c ts-node index.ts mainnet "seed phrase" "recipient_address"``
+``npx forever -v -c ts-node ./index.ts mainnet "seed phrase" "recipient_address"``
