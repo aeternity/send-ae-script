@@ -149,11 +149,15 @@ async function sendCoins(aeSdk: sdk.AeSdk, sender: AccountPubKey, receiver: Acco
   logger.info("Success!");
 }
 
+// Returns a Promise that resolves after "ms" Milliseconds
+const timer = (ms: number) => new Promise(res => setTimeout(res, ms))
+
 async function init() {
   while (true) {
     const sdk = makeSdk();
     const senderAddr = await connectWallet(sdk);
     const res = await sendCoins(sdk, senderAddr, RECIPIENT_ADDRESS);
+    await timer(1000 * 5)
   }
 }
 
