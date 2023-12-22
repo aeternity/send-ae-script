@@ -3,13 +3,14 @@
 
 Installation
 
+`` sudo npm install forever -g ``
 `` npm install ``
 
 Run
 for testnet
 
-``npx forever -v -c ts-node ./index.ts testnet "seed phrase" "recipient_address"``
+`` forever start -v -a -l forever.log -o out.log -e err.log -c ./node_modules/.bin/ts-node ./index.ts testnet "seed phrase" "recipient_address"``
 
 for mainnet
 
-``npx forever -v -c ts-node ./index.ts mainnet "seed phrase" "recipient_address"``
+`` forever start -v -a -l forever.log -o out.log -e err.log -c ./node_modules/.bin/ts-node ./index.ts mainnet "seed phrase" "recipient_address"``
